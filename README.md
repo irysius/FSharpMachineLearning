@@ -14,4 +14,9 @@ I had lots of troubles initially trying to implement McCaffrey's post without re
 
 I deviated from his examples by having the net be initialized with the weights and biases to begin with, removing the need to perform a `SetWeights` operation on the neural net afterwards.
 
-Initially the implementation was done with F# Lists, but I decided to use MathNet.Numerics to open up myself to using more mathematical constructs.  
+Initially the implementation was done with F# Lists, but I decided to use MathNet.Numerics to open up myself to using more mathematical constructs.
+
+## back_propagation
+[James McCaffrey's Post](https://jamesmccaffrey.wordpress.com/2012/11/20/coding-neural-network-back-propagation/)
+
+[October 2012 Article](https://msdn.microsoft.com/en-us/magazine/jj658979.aspx)

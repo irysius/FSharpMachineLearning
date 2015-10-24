@@ -37,14 +37,21 @@ type Network(ihWeights: Matrix<float>, ihBiases: Vector<float>, hoWeights: Matri
         if ihWeights.ColumnCount <> numHidden then invalidArg "ihWeights" (String.Format("ihWeights is expected to have {0} columns", numHidden))
         if hoWeights.RowCount <> numHidden || hoWeights.ColumnCount <> numOutput then invalidArg "hoWeights" (String.Format("hoWeights is expected to be {0}x{1}", numHidden, numOutput))
     
-    let sumsFor inputs weights biases = 
-        MathHelper.rowMultiply weights inputs |> MathHelper.colCollapse
-        |> (+) biases
+    let applyWeights weights inputs = 
+        MathHelper.rowMultiply weights inputs 
+        |> MathHelper.colCollapse
+
+    let applyBiases biases weightedSums =
+        weightedSums + biases
 
     member this.ComputeOutput(inputs: Vector<float>) =
         if inputs.Count <> numInput then invalidArg "inputs" (String.Format("inputs is expected to have {0} elements", numInput))        
-        let ihOutputs = sumsFor inputs ihWeights ihBiases
+        let ihOutputs = inputs
+                        |> applyWeights ihWeights
+                        |> applyBiases ihBiases
                         |> Vector.map MathHelper.sigmoid
-        let hoOutputs = sumsFor ihOutputs hoWeights hoBiases
+        let hoOutputs = ihOutputs
+                        |> applyWeights hoWeights
+                        |> applyBiases hoBiases
                         |> Vector.map MathHelper.tanh
         hoOutputs
