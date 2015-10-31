@@ -14,16 +14,22 @@ open NeuralNetwork
 
 let inputs = vector [1.0; 2.0; 3.0]
 
-let ihWeights = matrix [[0.1; 0.2; 0.3; 0.4];
-                 [0.5; 0.6; 0.7; 0.8];
-                 [0.9; 1.0; 1.1; 1.2]]
+let ihWeights = matrix [[0.1; 0.5; 0.9];
+                        [0.2; 0.6; 1.0];
+                        [0.3; 0.7; 1.1];
+                        [0.4; 0.8; 1.2];]
 let ihBiases = vector [-2.0; -6.0; -1.0; -7.0]
 
-let hoWeights = matrix [[1.3; 1.4];
-                 [1.5; 1.6];
-                 [1.7; 1.8];
-                 [1.9; 2.0]]
+let hoWeights = matrix [[1.3; 1.5; 1.7; 1.9];
+                        [1.4; 1.6; 1.8; 2.0]]
 let hoBiases = vector [-2.5; -5.0]
 
-let network = new Network(ihWeights, ihBiases, hoWeights, hoBiases)
+let settings = {
+    ihWeights = ihWeights;
+    ihBiases = ihBiases;
+    hoWeights = hoWeights;
+    hoBiases = hoBiases;
+}
+
+let network = new Net(settings)
 let results = network.ComputeOutput inputs
