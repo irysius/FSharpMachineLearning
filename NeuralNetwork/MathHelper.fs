@@ -152,8 +152,11 @@ module Trainer =
             let gradient = makeSetting ihWeightGradients ihBiasGradients hoWeightGradients hoBiasGradients
             updateSetting setting gradient delta
 
+        let error setting = 
+            0.0
+
         // TODO: Figure out how to do this functionally
-        let iteration setting = 
+        let trainSet setting = 
             let delta = clearSetting setting
             let mutable results = (setting, delta)
             for trainingData in trainingDatum do
@@ -161,20 +164,16 @@ module Trainer =
             let (newSetting, _) = results
             newSetting
 
-        let mutable counter = 0
-        let mutable continueLoop = true
-        let mutable finalSetting = setting
-        while continueLoop do
-            finalSetting <- iteration setting
-            counter <- counter + 1
-            if counter > trainingEndpoint.maxIterations then continueLoop <- false
+        let stopCondition counter setting =
+            let a = (counter > trainingEndpoint.maxIterations)
+            let b = ((error setting) < trainingEndpoint.absoluteError)
+            (a || b)
 
-            
+        let rec iteration setting counter =
+            let newSetting = trainSet setting
+            match stopCondition counter newSetting with
+            | false -> iteration newSetting (counter + 1)
+            | true -> newSetting
 
-        let iterations = 
-            Seq.initInfinite iteration
-            |> Seq.takeWhile isNotMatch
-            |> Seq.take 1
-
-        let (finalSetting, _) = iteration
+        let finalSetting = iteration setting 0
         finalSetting
