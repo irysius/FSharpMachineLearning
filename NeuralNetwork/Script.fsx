@@ -35,5 +35,5 @@ let network = new NeuralNet(settings)
 let results = network.ComputeOutput inputs
 
 let trainingDatum = [{ inputs = vector [1.0; 2.0; 3.0]; outputs = vector [-0.85; 0.75]; }]
-let trainingStop = { maxIterations = 1000; absoluteError = 0.01 }
-Trainer.trainNet trainingDatum settings 0.90 0.04
+let trainingStop = { maxIterations = 10; absoluteError = 0.01 }
+let finalSettings = Trainer.trainNet trainingDatum settings 0.90 0.04 trainingStop

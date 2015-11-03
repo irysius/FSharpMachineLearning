@@ -12,9 +12,9 @@ module MathHelper =
         | x when x > 45.0 -> 1.0
         | _ -> 1.0 / (1.0 + Math.Exp(-x))
 
-    // derivative of sigmoid
-    let dSigmoid (x: float) =
-        (sigmoid x) * (1.0 - sigmoid x)
+    // derivative of sigmoid, given sigmoid(x)
+    let internal dSigmoid (sigmoidx: float) =
+        (sigmoidx) * (1.0 - sigmoidx)
     
     let tanh (x:float) =
         match x with 
@@ -22,9 +22,9 @@ module MathHelper =
         | x when x > 20.0 -> 1.0
         | _ -> Math.Tanh x
 
-    // derivative of tanh
-    let dTanh (x:float) =
-        (1.0 - tanh x) * (1.0 + tanh x)
+    // derivative of tanh, given tanh(x)
+    let internal dTanh (tanhx:float) =
+        (1.0 - tanhx) * (1.0 + tanhx)
     
 
 type BackPropagationSetting = {
@@ -82,19 +82,22 @@ type NeuralNet(setting: NetSetting) =
 module Trainer =
     let trainNet trainingDatum setting (learnRate: float) (momentum: float) trainingEndpoint = 
         let calcOSignals (targets: Vector<float>) (actuals: Vector<float>) = 
-            targets - actuals
-            |> Vector.map MathHelper.dTanh
+            let derivative = actuals
+                             |> Vector.map MathHelper.dTanh
+            Vector.op_DotMultiply((targets - actuals), derivative)
 
         let calcHSignals hOutputs (hoWeights: Matrix<float>) (oSignals: Vector<float>) = 
-            let x = DenseMatrix.OfColumnVectors(oSignals)
-            let sum = hoWeights * x
+            let y = DenseMatrix.OfRowVectors(oSignals)
+            let x = hoWeights
+            let sum = y * x
+            let row = sum.Row(0)
             let derivative = hOutputs
                              |> Vector.map MathHelper.dSigmoid
-            derivative * sum
+            Vector.op_DotMultiply(row, derivative)
 
-        let weightGradients (values: Vector<float>) (signals: Vector<float>) = 
-            let x = DenseMatrix.OfColumnVectors(values)
-            let y = DenseMatrix.OfRowVectors(signals)
+        let weightGradients (signals: Vector<float>) (values: Vector<float>) = 
+            let x = DenseMatrix.OfColumnVectors(signals)
+            let y = DenseMatrix.OfRowVectors(values)
             x * y
 
         let biasGradients signals = 
@@ -144,16 +147,22 @@ module Trainer =
             let net = new NeuralNet(setting)
             let (results, ihOutputs) = net.ComputeOutputVerbose(trainData.inputs)
             let oSignals = calcOSignals trainData.outputs results
-            let hoWeightGradients = weightGradients ihOutputs oSignals
+            let hoWeightGradients = weightGradients oSignals ihOutputs
             let hoBiasGradients = biasGradients oSignals
             let hSignals = calcHSignals ihOutputs setting.hoWeights oSignals
-            let ihWeightGradients = weightGradients trainData.inputs hSignals
+            let ihWeightGradients = weightGradients hSignals trainData.inputs
             let ihBiasGradients = biasGradients hSignals
             let gradient = makeSetting ihWeightGradients ihBiasGradients hoWeightGradients hoBiasGradients
             updateSetting setting gradient delta
 
         let error setting = 
-            0.0
+            let net = new NeuralNet(setting)
+            // Mean squared error
+            let squaredError = trainingDatum
+                               |> List.map (fun x -> (net.ComputeOutput(x.inputs), x.outputs))
+                               |> List.map (fun (x, y) -> printfn "%A" x; (x - y) * (x - y))
+                               |> List.sum
+            squaredError / (float)trainingDatum.Length
 
         // TODO: Figure out how to do this functionally
         let trainSet setting = 
@@ -165,13 +174,15 @@ module Trainer =
             newSetting
 
         let stopCondition counter setting =
-            let a = (counter > trainingEndpoint.maxIterations)
-            let b = ((error setting) < trainingEndpoint.absoluteError)
+            let e = error setting
+            printfn "iteration %d, error: %f" counter e
+            let a = (counter >= trainingEndpoint.maxIterations)
+            let b = (e < trainingEndpoint.absoluteError)
             (a || b)
 
         let rec iteration setting counter =
             let newSetting = trainSet setting
-            match stopCondition counter newSetting with
+            match stopCondition (counter + 1) newSetting with
             | false -> iteration newSetting (counter + 1)
             | true -> newSetting
 
