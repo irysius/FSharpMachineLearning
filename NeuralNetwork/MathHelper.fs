@@ -1,4 +1,4 @@
-﻿namespace NeuralNetwork
+﻿namespace MachineLearning
 open System
 open MathNet.Numerics
 open MathNet.Numerics.LinearAlgebra
@@ -18,24 +18,14 @@ module MathHelper =
     
     let tanh (x:float) =
         match x with 
-        | x when x < -10.0 -> -1.0
-        | x when x > 10.0 -> 1.0
+        | x when x < -20.0 -> -1.0
+        | x when x > 20.0 -> 1.0
         | _ -> Math.Tanh x
 
     // derivative of tanh
     let dTanh (x:float) =
         (1.0 - tanh x) * (1.0 + tanh x)
-
-    let rowMultiply (matrix:Matrix<float>) (vector:Vector<float>) = 
-        Seq.zip (matrix.EnumerateRows()) (vector.Enumerate())
-        |> Seq.map (fun (x, y) -> x * y)
-        |> DenseMatrix.ofRowSeq
-
-    // Matrix.reduceCols seems to have a bug
-    let colCollapse (matrix:Matrix<float>) =
-        matrix.EnumerateColumns()
-        |> Seq.map (fun x -> x.Sum())
-        |> DenseVector.ofSeq
+    
 
 type BackPropagationSetting = {
     learningRate: float
@@ -49,8 +39,17 @@ type NetSetting = {
     hoBiases: Vector<float>
 }
 
-// NeuralNetwork.Net
-type Net(setting: NetSetting) = 
+type TrainingData = {
+    inputs: Vector<float>
+    outputs: Vector<float>
+}
+type TrainingEndpoint = {
+    maxIterations: int
+    absoluteError: float
+}
+
+// MachineLearning.NeuralNet
+type NeuralNet(setting: NetSetting) = 
     let ihWeights = setting.ihWeights
     let ihBiases = DenseMatrix.OfColumnVectors(setting.ihBiases)
     let hoWeights = setting.hoWeights
@@ -69,7 +68,113 @@ type Net(setting: NetSetting) =
                         |> Matrix.map MathHelper.sigmoid
         let hoOutputs = hoWeights * ihOutputs + hoBiases
                         |> Matrix.map MathHelper.tanh
-        hoOutputs
+        hoOutputs.Column(0)
 
-    member this.ComputeOutputAndAdjust(inputs: Vector<float>, backPropagate: BackPropagationSetting) =
-        0
+    member this.ComputeOutputVerbose(inputs: Vector<float>) = 
+        if inputs.Count <> numInput then invalidArg "inputs" (String.Format("inputs is expected to have {0} elements", numInput))
+        let inputMatrix = DenseMatrix.OfColumnVectors(inputs)
+        let ihOutputs = ihWeights * inputMatrix + ihBiases
+                        |> Matrix.map MathHelper.sigmoid
+        let hoOutputs = hoWeights * ihOutputs + hoBiases
+                        |> Matrix.map MathHelper.tanh
+        hoOutputs.Column(0), ihOutputs.Column(0)
+
+module Trainer =
+    let trainNet trainingDatum setting (learnRate: float) (momentum: float) trainingEndpoint = 
+        let calcOSignals (targets: Vector<float>) (actuals: Vector<float>) = 
+            targets - actuals
+            |> Vector.map MathHelper.dTanh
+
+        let calcHSignals hOutputs (hoWeights: Matrix<float>) (oSignals: Vector<float>) = 
+            let x = DenseMatrix.OfColumnVectors(oSignals)
+            let sum = hoWeights * x
+            let derivative = hOutputs
+                             |> Vector.map MathHelper.dSigmoid
+            derivative * sum
+
+        let weightGradients (values: Vector<float>) (signals: Vector<float>) = 
+            let x = DenseMatrix.OfColumnVectors(values)
+            let y = DenseMatrix.OfRowVectors(signals)
+            x * y
+
+        let biasGradients signals = 
+            signals
+            |> Vector.map (fun x -> x * 1.0)
+
+        let makeSetting ihWeights ihBiases hoWeights hoBiases = 
+            {
+                ihWeights = ihWeights; 
+                ihBiases = ihBiases; 
+                hoWeights = hoWeights; 
+                hoBiases = hoBiases
+            }
+
+        let clearSetting setting = 
+            let clone = {
+                ihWeights = setting.ihWeights.Clone();
+                ihBiases = setting.ihBiases.Clone();
+                hoWeights = setting.hoWeights.Clone();
+                hoBiases = setting.hoBiases.Clone()
+            }
+            clone.ihWeights.Clear()
+            clone.ihBiases.Clear()
+            clone.hoWeights.Clear()
+            clone.hoBiases.Clear()
+            clone
+        
+        let updateSetting source gradient delta =
+            let updateWeights (weights: Matrix<float>) (weightGradients: Matrix<float>) (prevDelta: Matrix<float>) = 
+                let delta = weightGradients * learnRate
+                let inertia = prevDelta * momentum
+                (weights + delta + inertia), delta
+
+            let updateBiases (biases: Vector<float>) (biasGradients: Vector<float>) (prevDelta: Vector<float>) = 
+                let delta = biasGradients * learnRate
+                let inertia = prevDelta * momentum
+                (biases + delta + inertia), delta
+
+            let (r1, d1) = updateWeights source.ihWeights gradient.ihWeights delta.ihWeights
+            let (r2, d2) = updateBiases source.ihBiases gradient.ihBiases delta.ihBiases
+            let (r3, d3) = updateWeights source.hoWeights gradient.hoWeights delta.hoWeights
+            let (r4, d4) = updateBiases source.hoBiases gradient.hoBiases delta.hoBiases
+            ((makeSetting r1 r2 r3 r4), (makeSetting d1 d2 d3 d4))
+
+
+        let train (setting, delta) trainData = 
+            let net = new NeuralNet(setting)
+            let (results, ihOutputs) = net.ComputeOutputVerbose(trainData.inputs)
+            let oSignals = calcOSignals trainData.outputs results
+            let hoWeightGradients = weightGradients ihOutputs oSignals
+            let hoBiasGradients = biasGradients oSignals
+            let hSignals = calcHSignals ihOutputs setting.hoWeights oSignals
+            let ihWeightGradients = weightGradients trainData.inputs hSignals
+            let ihBiasGradients = biasGradients hSignals
+            let gradient = makeSetting ihWeightGradients ihBiasGradients hoWeightGradients hoBiasGradients
+            updateSetting setting gradient delta
+
+        // TODO: Figure out how to do this functionally
+        let iteration setting = 
+            let delta = clearSetting setting
+            let mutable results = (setting, delta)
+            for trainingData in trainingDatum do
+                results <- train results trainingData
+            let (newSetting, _) = results
+            newSetting
+
+        let mutable counter = 0
+        let mutable continueLoop = true
+        let mutable finalSetting = setting
+        while continueLoop do
+            finalSetting <- iteration setting
+            counter <- counter + 1
+            if counter > trainingEndpoint.maxIterations then continueLoop <- false
+
+            
+
+        let iterations = 
+            Seq.initInfinite iteration
+            |> Seq.takeWhile isNotMatch
+            |> Seq.take 1
+
+        let (finalSetting, _) = iteration
+        finalSetting
